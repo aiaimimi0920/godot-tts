@@ -1,0 +1,15 @@
+# Binaries
+*.os
+*.o
+*.o.tmp
+*.dblite
+
+.DS_Store
+.vscode
+
+demo/addons
+*.code-workspace
+bin/addons/godot_tts/bin/libgodot_tts.macos.template_release.double.universal.framework/libgodot_tts.macos.template_release.double.universal
+bin/addons/godot_tts/bin/libgodot_tts.macos.template_release.universal.framework/libgodot_tts.macos.template_release.universal
+bin/addons/godot_tts/models
+bin/addons/godot_tts/bin/libgodot_tts.macos.template_release.universal.framework/libgodot_tts.macos.template_release.universal
