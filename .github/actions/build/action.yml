@@ -53,5 +53,5 @@ runs:
         SCONS_CACHE_DIR: .scons-cache
       run: |
        #scons target=template_debug platform=${{ inputs.platform }} arch=${{ inputs.arch }} generate_bindings=no production=yes use_clang_cl=true
-        scons target=template_release platform=${{ inputs.platform }} arch=${{ inputs.arch }} generate_bindings=no production=yes precision=single --debug=stacktrace use_clang_cl=true
-        scons target=template_release platform=${{ inputs.platform }} arch=${{ inputs.arch }} generate_bindings=no production=yes precision=double --debug=stacktrace use_clang_cl=true
+        scons target=template_release platform=${{ inputs.platform }} arch=${{ inputs.arch }} generate_bindings=no production=yes precision=single use_clang_cl=true disable_exceptions=false
+        scons target=template_release platform=${{ inputs.platform }} arch=${{ inputs.arch }} generate_bindings=no production=yes precision=double use_clang_cl=true disable_exceptions=false
