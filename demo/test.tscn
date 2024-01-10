@@ -1,0 +1,57 @@
+[gd_scene load_steps=3 format=3 uid="uid://dibqfutwftm8j"]
+
+[ext_resource type="Script" path="res://test.gd" id="1_pvn5r"]
+[ext_resource type="VITSResource" path="res://addons/godot_tts/models/single_speaker_fast.bin" id="2_nrtx6"]
+
+[node name="TextToSpeaker" type="VBoxContainer"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -219.5
+offset_right = 200.0
+offset_bottom = 219.5
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_pvn5r")
+model_res = ExtResource("2_nrtx6")
+
+[node name="Panel" type="Panel" parent="."]
+custom_minimum_size = Vector2(400, 400)
+layout_mode = 2
+
+[node name="Label" type="TextEdit" parent="Panel"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(400, 400)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -200.0
+offset_right = 200.0
+offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 4
+text = "我希望世界和平"
+
+[node name="HBoxContainer" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="LoadModel" type="Button" parent="HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "load_model"
+
+[node name="Generate" type="Button" parent="HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "generate"
+
+[connection signal="pressed" from="HBoxContainer/LoadModel" to="." method="_on_test_button_2_pressed"]
+[connection signal="pressed" from="HBoxContainer/Generate" to="." method="_on_test_button_pressed"]
