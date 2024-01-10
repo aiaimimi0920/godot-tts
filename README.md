@@ -26,6 +26,11 @@ Go to a github release, copy paste the addons folder to the demo folder. Restart
 
 `TextToSpeech` Node has a `generate` which generate audio buffer from text.
 
+
+
+https://github.com/aiaimimi0920/godot-tts/assets/153103332/0813ddc9-2c71-453e-8ddb-50ce7f846ba9
+
+
 ## Contributors ✨
 
 Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
