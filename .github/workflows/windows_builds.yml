@@ -9,9 +9,6 @@ env:
   Glog_ROOT: "${{github.workspace}}/glog"
   Glog_INCLUDE_DIR: "${{ github.workspace }}/glog/include"
   Glog_LIBRARY: "${{github.workspace}}/glog/lib/glog.lib"
-  # Openfst_ROOT: "${{github.workspace}}/openfst"
-  # Openfst_INCLUDE_DIR: "${{ github.workspace }}/openfst/include"
-  # Openfst_LIBRARY: "${{github.workspace}}/openfst/lib/fst.lib"
 
 jobs:
   build-windows:
@@ -47,43 +44,6 @@ jobs:
 
       - name: Setup MSVC problem matcher
         uses: ammaraskar/msvc-problem-matcher@master
-
-      # - name: Install Conan
-      #   # You may pin to the exact commit or the version.
-      #   # uses: turtlebrowser/get-conan@368dfd1b36f811723d7db981352dd77cd69c2c9e
-      #   id: conan
-      #   uses: turtlebrowser/get-conan@main
-      #   with:
-      #     version: 1.59.0
-
-      # - name: Create default profile
-      #   run: conan profile new default --detect
-
-      # - name: Cache openfst
-      #   id: cache-openfst
-      #   uses: actions/cache@v3
-      #   with:
-      #       path: openfst/
-      #       key: ${{runner.os}}-openfst-1.7.2-${{matrix.arch}}-${{matrix.build_type}}
-      # - name: Download openfst
-      #   if: steps.cache-openfst.outputs.cache-hit != 'true'
-      #   run: |
-      #       Invoke-WebRequest -Uri "https://github.com/aiaimimi0920/openfst/archive/a41bf3c.zip" -OutFile "openfst-1.7.2.zip"
-      #       Expand-Archive openfst-1.7.2.zip .
-      #       Rename-Item -Path .\openfst-a41bf3c00694cbd08a5d885533c5af83a89d49bd -NewName openfst-1.7.2
-
-      # - name: Install dependencies
-      #   run: conan install openfst-1.7.2 -s build_type=${{matrix.build_type}} -if build-openfst --build=missing
-
-      # - name: Build openfst
-      #   if: steps.cache-openfst.outputs.cache-hit != 'true'
-      #   run: |
-      #       cmake -S openfst-1.7.2 -B build-openfst `
-      #         -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/openfst
-      #       cmake --build build-openfst `
-      #             --target install
-      #   env:
-      #     CMAKE_BUILD_PARALLEL_LEVEL: 1
 
       - name: Cache gflags
         id: cache-gflags
