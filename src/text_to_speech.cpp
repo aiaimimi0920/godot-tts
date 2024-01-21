@@ -556,7 +556,6 @@ bool TTSSpeaker::process_message_infer() {
 }
 
 bool TTSSpeaker::process_message_queue() {
-	UtilityFunctions::print("process_message_queue is_begin");
 	while (true) {
 		queue_is_running = true;
 
@@ -822,7 +821,7 @@ int TextToSpeech::_get_new_utterance_id() {
 	return last_utterance_id;
 }
 
-Ref<VITSResource> &TextToSpeech::_get_res_from_path(String vits_model_path) {
+const Ref<VITSResource> TextToSpeech::_get_res_from_path(String vits_model_path) {
 	Ref<VITSResource> ret = ResourceLoader::get_singleton()->load(vits_model_path, "VITSResource");
 	return ret;
 }
@@ -907,7 +906,7 @@ bool TextToSpeech::tts_is_speaking_from_vits_res(const Ref<VITSResource> &vits_m
 }
 
 bool TextToSpeech::tts_is_speaking_from_vits_path(String vits_model_path, int speaker_index) {
-	Ref<VITSResource> vits_model = _get_res_from_path(vits_model_path);
+	auto vits_model = _get_res_from_path(vits_model_path);
 	return _tts_is_speaking(_get_speaker(vits_model, speaker_index));
 }
 
@@ -924,7 +923,7 @@ bool TextToSpeech::tts_is_paused_from_vits_res(const Ref<VITSResource> &vits_mod
 }
 
 bool TextToSpeech::tts_is_paused_from_vits_path(String vits_model_path, int speaker_index) {
-	Ref<VITSResource> vits_model = _get_res_from_path(vits_model_path);
+	auto vits_model = _get_res_from_path(vits_model_path);
 	return _tts_is_paused(_get_speaker(vits_model, speaker_index));
 }
 
@@ -949,7 +948,7 @@ Array TextToSpeech::tts_get_voices_from_vits_res(const Ref<VITSResource> &vits_m
 }
 
 Array TextToSpeech::tts_get_voices_from_vits_path(String vits_model_path) {
-	Ref<VITSResource> vits_model = _get_res_from_path(vits_model_path);
+	auto vits_model = _get_res_from_path(vits_model_path);
 	return _tts_get_voices(vits_model);
 }
 
@@ -970,7 +969,7 @@ int TextToSpeech::tts_infer_from_vits_res(String p_text, const Ref<VITSResource>
 }
 
 int TextToSpeech::tts_infer_from_vits_path(String p_text, const String &vits_model_path, int speaker_index, int p_volume, float p_pitch, float p_rate, bool p_interrupt, bool auto_play, bool immediately, int wait_utterance_id, int wait_event, float wait_time, bool create_file, String file_path) {
-	Ref<VITSResource> vits_model = _get_res_from_path(vits_model_path);
+	auto vits_model = _get_res_from_path(vits_model_path);
 	TTSSpeaker *cur_speaker = _get_speaker(vits_model, speaker_index);
 	return _tts_infer(p_text, cur_speaker, p_volume, p_pitch, p_rate, p_interrupt, auto_play, immediately, wait_utterance_id, TTSUtteranceEvent(wait_event), wait_time, create_file, file_path);
 }
@@ -1042,7 +1041,7 @@ void TextToSpeech::tts_pause_from_vits_res(const Ref<VITSResource> &vits_model, 
 }
 
 void TextToSpeech::tts_pause_from_vits_path(const String &vits_model_path, int speaker_index) {
-	Ref<VITSResource> vits_model = _get_res_from_path(vits_model_path);
+	auto vits_model = _get_res_from_path(vits_model_path);
 	TTSSpeaker *cur_speaker = _get_speaker(vits_model, speaker_index);
 	_tts_pause(cur_speaker);
 }
@@ -1068,7 +1067,7 @@ void TextToSpeech::tts_resume_from_vits_res(const Ref<VITSResource> &vits_model,
 }
 
 void TextToSpeech::tts_resume_from_vits_path(const String &vits_model_path, int speaker_index) {
-	Ref<VITSResource> vits_model = _get_res_from_path(vits_model_path);
+	auto vits_model = _get_res_from_path(vits_model_path);
 	TTSSpeaker *cur_speaker = _get_speaker(vits_model, speaker_index);
 	_tts_resume(cur_speaker);
 }
@@ -1104,7 +1103,7 @@ void TextToSpeech::tts_play_from_vits_res(const Ref<VITSResource> &vits_model, i
 }
 
 void TextToSpeech::tts_play_from_vits_path(const String &vits_model_path, int speaker_index) {
-	Ref<VITSResource> vits_model = _get_res_from_path(vits_model_path);
+	auto vits_model = _get_res_from_path(vits_model_path);
 	TTSSpeaker *cur_speaker = _get_speaker(vits_model, speaker_index);
 	_tts_play(cur_speaker);
 }
@@ -1143,7 +1142,7 @@ void TextToSpeech::tts_stop_from_vits_res(const Ref<VITSResource> &vits_model, i
 }
 
 void TextToSpeech::tts_stop_from_vits_path(const String &vits_model_path, int speaker_index) {
-	Ref<VITSResource> vits_model = _get_res_from_path(vits_model_path);
+	auto vits_model = _get_res_from_path(vits_model_path);
 	TTSSpeaker *cur_speaker = _get_speaker(vits_model, speaker_index);
 	_tts_stop(cur_speaker);
 }

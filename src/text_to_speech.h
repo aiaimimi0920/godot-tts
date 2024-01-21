@@ -228,7 +228,7 @@ public:
 	HashMap<String, TTSSpeaker *> speaker_map;
 	// Dictionary speaker_map;
 
-	Ref<VITSResource> &_get_res_from_path(String vits_model_path);
+	const Ref<VITSResource> _get_res_from_path(String vits_model_path);
 
 	TTSSpeaker *_get_speaker_from_speaker_uuid(String speaker_uuid);
 
