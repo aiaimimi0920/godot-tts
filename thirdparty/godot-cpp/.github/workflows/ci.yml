@@ -65,7 +65,7 @@ jobs:
             platform: android
             artifact-name: godot-cpp-android-arm64-release
             artifact-path: bin/libgodot-cpp.android.template_release.arm64.a
-            flags: ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME arch=arm64
+            flags: arch=arm64
             run-tests: false
             cache-name: android-arm64
 
@@ -78,12 +78,22 @@ jobs:
             run-tests: false
             cache-name: ios-arm64
 
+          - name: 🌐 Web (wasm32)
+            os: ubuntu-20.04
+            platform: web
+            artifact-name: godot-cpp-web-wasm32-release
+            artifact-path: bin/libgodot-cpp.web.template_release.wasm32.a
+            run-tests: false
+            cache-name: web-wasm32
+
     env:
       SCONS_CACHE: ${{ github.workspace }}/.scons-cache/
+      EM_VERSION: 3.1.39
+      EM_CACHE_FOLDER: "emsdk-cache"
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -98,19 +108,29 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Linux dependencies
-        if: ${{ matrix.platform == 'linux' }}
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -qqq build-essential pkg-config
+      - name: Android dependencies
+        if: ${{ matrix.platform == 'android' }}
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r23c
+          link-to-sdk: true
 
-      - name: Install scons
-        run: |
-          python -m pip install scons==4.0.0
+      - name: Web dependencies
+        if: ${{ matrix.platform == 'web' }}
+        uses: mymindstorm/setup-emsdk@v13
+        with:
+          version: ${{env.EM_VERSION}}
+          actions-cache-folder: ${{env.EM_CACHE_FOLDER}}
 
       - name: Setup MinGW for Windows/MinGW build
         if: ${{ matrix.platform == 'windows' && matrix.flags == 'use_mingw=yes' }}
         uses: egor-tensin/setup-mingw@v2
+        with:
+          version: 12.2.0
+
+      - name: Install scons
+        run: |
+          python -m pip install scons==4.0.0
 
       - name: Generate godot-cpp sources only
         run: |
@@ -153,7 +173,7 @@ jobs:
           ./godot-artifacts/godot.linuxbsd.editor.x86_64.mono --headless --version
           cd test
           # Need to run the editor so .godot is generated... but it crashes! Ignore that :-)
-          (cd project && (../../godot-artifacts/godot.linuxbsd.editor.x86_64.mono --editor --headless --quit >/dev/null 2>&1 || true))
+          (cd project && (timeout 10 ../../godot-artifacts/godot.linuxbsd.editor.x86_64.mono --editor --headless --quit >/dev/null 2>&1 || true))
           GODOT=../godot-artifacts/godot.linuxbsd.editor.x86_64.mono ./run-tests.sh
 
       - name: Upload artifact
@@ -168,7 +188,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -192,7 +212,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -216,7 +236,7 @@ jobs:
     runs-on: windows-2019
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
