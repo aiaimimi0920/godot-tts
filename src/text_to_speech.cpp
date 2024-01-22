@@ -11,6 +11,15 @@
 #include <string>
 #include <vector>
 
+void print_hex(const std::string &p_string) {
+	for (int i = 0; i < p_string.size(); i++) {
+		if (i > 0)
+			printf(" ");
+		printf("%02X", p_string[i]);
+	}
+	printf("\n");
+}
+
 void _int_array_to_float_array(const uint32_t &p_mix_frame_count,
 		const int16_t *p_process_buffer_in,
 		float *p_process_buffer_out) {
@@ -272,31 +281,27 @@ void TTSSpeaker::tts_destroy() {
 		audio_stream_player->queue_free();
 		audio_stream_player = nullptr;
 	}
-	//TODO: 你应该销毁这个指针，当时当前加上这一行会编译后在运行是崩溃
-	// delete synthesizer_ptr;
-
-	this->status = this->status | (speaker_state_flags & ~SPEAKER_STATE_INIT);
+	delete synthesizer_ptr;
+	this->status = this->status & (speaker_state_flags & ~SPEAKER_STATE_INIT);
 }
 
 void TTSSpeaker::infer() {
-	infer_need_stop = false;
-	if (infer_thread.is_started() == false) {
+	this->infer_need_stop = false;
+	if (this->infer_thread == nullptr) {
+		this->infer_thread = memnew(Thread);
+	}
+	if (this->is_infering() == false) {
 		this->status = this->status | SPEAKER_STATE_INFERING;
-		infer_thread.start(callable_mp(this, &TTSSpeaker::process_message_infer), Thread::Priority::PRIORITY_NORMAL);
-	} else {
-		if (infer_is_running == false) {
-			infer_semaphore.post();
-		}
+		this->infer_thread->start(callable_mp(this, &TTSSpeaker::process_message_infer), Thread::Priority::PRIORITY_NORMAL);
 	}
 }
 
 void TTSSpeaker::uninfer() {
-	infer_need_stop = true;
-	if (infer_thread.is_started() == true) {
-		this->status = this->status | (speaker_state_flags & ~SPEAKER_STATE_INFERING);
-		infer_semaphore.post();
-		infer_thread.wait_to_finish();
+	this->infer_need_stop = true;
+	if (this->infer_thread != nullptr) {
+		this->infer_thread = nullptr;
 	}
+	this->status = this->status & (speaker_state_flags & ~SPEAKER_STATE_INFERING);
 }
 
 void TTSSpeaker::pause() {
@@ -308,40 +313,40 @@ void TTSSpeaker::pause() {
 
 void TTSSpeaker::resume() {
 	if (audio_stream_player) {
-		this->status = this->status | (speaker_state_flags & ~SPEAKER_STATE_PAUSE);
+		this->status = this->status & (speaker_state_flags & ~SPEAKER_STATE_PAUSE);
 		audio_stream_player->set_stream_paused(false);
 	}
 }
 
 void TTSSpeaker::play() {
-	queue_need_stop = false;
-	this->status = this->status | SPEAKER_STATE_PLAYING;
-	if (audio_stream_player != nullptr) {
-		if (audio_stream_player->is_inside_tree() == false) {
-			TextToSpeech::get_singleton()->add_to_tree();
-		}
-		audio_stream_player->play();
+	this->queue_need_stop = false;
+	if (this->queue_thread == nullptr) {
+		this->queue_thread = memnew(Thread);
 	}
 
-	if (queue_thread.is_started() == false) {
-		queue_thread.start(callable_mp(this, &TTSSpeaker::process_message_queue), Thread::Priority::PRIORITY_NORMAL);
-	} else {
-		if (queue_is_running == false) {
-			queue_semaphore.post();
+	if (this->is_playing() == false) {
+		this->status = this->status | SPEAKER_STATE_PLAYING;
+		if (audio_stream_player != nullptr) {
+			if (audio_stream_player->is_inside_tree() == false) {
+				TextToSpeech::get_singleton()->add_to_tree();
+			}
+			audio_stream_player->play();
 		}
+		this->queue_thread->start(callable_mp(this, &TTSSpeaker::process_message_queue), Thread::Priority::PRIORITY_NORMAL);
 	}
 }
 
 void TTSSpeaker::stop() {
-	queue_need_stop = true;
-	this->status = this->status | (speaker_state_flags & ~SPEAKER_STATE_INFERING);
+	this->queue_need_stop = true;
+
+	if (this->queue_thread != nullptr) {
+		this->queue_thread = nullptr;
+	}
+
 	if (audio_stream_player) {
 		audio_stream_player->stop();
 	}
-	if (queue_thread.is_started() == true) {
-		queue_semaphore.post();
-		queue_thread.wait_to_finish();
-	}
+	this->status = this->status & (speaker_state_flags & ~SPEAKER_STATE_PLAYING);
 }
 
 void TTSSpeaker::mute() {
@@ -457,239 +462,149 @@ static inline unsigned int encode_uint16(uint16_t p_uint, uint8_t *p_arr) {
 // 处理文本推理
 bool TTSSpeaker::process_message_infer() {
 	// 对于一个speaker每次只进行一次推理
-	while (true) {
-		infer_is_running = true;
+	infer_is_running = true;
 
-		while (is_init() && is_playing() && need_process_message_queue.size() > 0) {
-			TTSUtterance *message = need_process_message_queue.front()->get();
-			int32_t retLen = 0;
-			message->generate_time = Time::get_singleton()->get_ticks_msec();
-			int16_t *wavData = synthesizer_ptr->infer(message->text.utf8().get_data(), speaker_index, message->rate, retLen);
+	while (is_init() && is_playing() && need_process_message_queue.size() > 0) {
+		TTSUtterance *message = need_process_message_queue.front()->get();
+		int32_t retLen = 0;
+		message->generate_time = Time::get_singleton()->get_ticks_msec();
+		int16_t *wavData = synthesizer_ptr->infer(message->text.utf8().get_data(), speaker_index, message->rate, retLen);
 
-			int buffer_len = retLen;
-			float *buffer_float = (float *)memalloc(sizeof(float) * buffer_len);
-			float *resampled_float = (float *)memalloc(sizeof(float) * buffer_len * AudioServer::get_singleton()->get_mix_rate() / 16000);
-			_int_array_to_float_array(buffer_len, wavData, buffer_float);
+		int buffer_len = retLen;
+		float *buffer_float = (float *)memalloc(sizeof(float) * buffer_len);
+		float *resampled_float = (float *)memalloc(sizeof(float) * buffer_len * AudioServer::get_singleton()->get_mix_rate() / 16000);
+		_int_array_to_float_array(buffer_len, wavData, buffer_float);
 
-			int result_size = _resample_audio_buffer(
-					buffer_float, // Pointer to source buffer
-					buffer_len, // Size of source buffer * sizeof(float)
-					16000, // Source sample rate
-					AudioServer::get_singleton()->get_mix_rate(), // Target sample rate
-					// 16000, // Target sample rate
-					resampled_float);
+		int result_size = _resample_audio_buffer(
+				buffer_float, // Pointer to source buffer
+				buffer_len, // Size of source buffer * sizeof(float)
+				16000, // Source sample rate
+				AudioServer::get_singleton()->get_mix_rate(), // Target sample rate
+				// 16000, // Target sample rate
+				resampled_float);
 
-			retLen = result_size;
-			Vector<AudioFrame> target_audio;
+		retLen = result_size;
+		Vector<AudioFrame> target_audio;
 
-			for (int32_t i = 0; i < retLen; i++) {
-				int16_t target_one_buffer = (int16_t)(resampled_float[i] * (message->volume / 100.0));
-				AudioFrame cur_audio_frame;
-				cur_audio_frame.l = target_one_buffer / 32768.f;
-				cur_audio_frame.r = target_one_buffer / 32768.f;
-				target_audio.push_back(cur_audio_frame);
-			}
-			float sample_rate = AudioServer::get_singleton()->get_mix_rate();
-			float *in_l = (float *)target_audio.ptrw();
-			float *in_r = in_l + 1;
+		for (int32_t i = 0; i < retLen; i++) {
+			int16_t target_one_buffer = (int16_t)(resampled_float[i] * (message->volume / 100.0));
+			AudioFrame cur_audio_frame;
+			cur_audio_frame.l = target_one_buffer / 32768.f;
+			cur_audio_frame.r = target_one_buffer / 32768.f;
+			target_audio.push_back(cur_audio_frame);
+		}
+		float sample_rate = AudioServer::get_singleton()->get_mix_rate();
+		float *in_l = (float *)target_audio.ptrw();
+		float *in_r = in_l + 1;
 
-			Vector<AudioFrame> p_dst_frames;
-			p_dst_frames.resize(retLen);
+		Vector<AudioFrame> p_dst_frames;
+		p_dst_frames.resize(retLen);
 
-			float *out_l = (float *)p_dst_frames.ptrw();
-			float *out_r = out_l + 1;
+		float *out_l = (float *)p_dst_frames.ptrw();
+		float *out_r = out_l + 1;
 
-			SMBPitchShift shift_l;
-			SMBPitchShift shift_r;
+		SMBPitchShift shift_l;
+		SMBPitchShift shift_r;
 
-			shift_l.PitchShift(message->pitch, retLen, 2048, 4, sample_rate, in_l, out_l, 2);
-			shift_r.PitchShift(message->pitch, retLen, 2048, 4, sample_rate, in_r, out_r, 2);
+		shift_l.PitchShift(message->pitch, retLen, 2048, 4, sample_rate, in_l, out_l, 2);
+		shift_r.PitchShift(message->pitch, retLen, 2048, 4, sample_rate, in_r, out_r, 2);
 
-			PackedByteArray p_data;
-			p_data.resize(retLen * 2 * 2);
-			uint8_t *w = p_data.ptrw();
+		PackedByteArray p_data;
+		p_data.resize(retLen * 2 * 2);
+		uint8_t *w = p_data.ptrw();
 
-			for (int32_t i = 0; i < retLen; i++) {
-				int16_t l_v = CLAMP(p_dst_frames[i].l * 32768, -32768, 32767);
-				encode_uint16(l_v, &w[(i * 2) * 2]);
+		for (int32_t i = 0; i < retLen; i++) {
+			int16_t l_v = CLAMP(p_dst_frames[i].l * 32768, -32768, 32767);
+			encode_uint16(l_v, &w[(i * 2) * 2]);
 
-				int16_t r_v = CLAMP(p_dst_frames[i].r * 32768, -32768, 32767);
-				encode_uint16(r_v, &w[(i * 2 + 1) * 2]);
-			}
-			// 保存文件
-			Ref<AudioStreamWAV> audio_stream_wav_ins;
-			audio_stream_wav_ins.instantiate();
-			audio_stream_wav_ins->set_data(p_data);
-			audio_stream_wav_ins->set_stereo(true);
-			audio_stream_wav_ins->set_mix_rate(AudioServer::get_singleton()->get_mix_rate());
-			audio_stream_wav_ins->set_format(AudioStreamWAV::FORMAT_16_BITS);
-			message->audio_stream_wav = audio_stream_wav_ins;
+			int16_t r_v = CLAMP(p_dst_frames[i].r * 32768, -32768, 32767);
+			encode_uint16(r_v, &w[(i * 2 + 1) * 2]);
+		}
+		// 保存文件
+		Ref<AudioStreamWAV> audio_stream_wav_ins;
+		audio_stream_wav_ins.instantiate();
+		audio_stream_wav_ins->set_data(p_data);
+		audio_stream_wav_ins->set_stereo(true);
+		audio_stream_wav_ins->set_mix_rate(AudioServer::get_singleton()->get_mix_rate());
+		audio_stream_wav_ins->set_format(AudioStreamWAV::FORMAT_16_BITS);
+		message->audio_stream_wav = audio_stream_wav_ins;
 
-			if (message->create_file) {
-				audio_stream_wav_ins->save_to_wav(message->file_path);
-			}
-			message->generated_time = Time::get_singleton()->get_ticks_msec();
-			TextToSpeech::get_singleton()->call_deferred("emit_signal", "generated_audio_buffer", message->id, p_data, message->create_file ? message->file_path : "");
-			if (message->auto_play) {
-				// 这里的立刻不是推理完成后立刻，而是不加入等待序列
-				if (message->immediately) {
-					if (message->wait_utterance_id != -1) {
-						need_play_message_pool.push_back(message);
-					} else {
-						play_message(message);
-					}
+		if (message->create_file) {
+			audio_stream_wav_ins->save_to_wav(message->file_path);
+		}
+		message->generated_time = Time::get_singleton()->get_ticks_msec();
+		TextToSpeech::get_singleton()->call_deferred("emit_signal", "generated_audio_buffer", message->id, p_data, message->create_file ? message->file_path : "");
+		if (message->auto_play) {
+			// 这里的立刻不是推理完成后立刻，而是不加入等待序列
+			if (message->immediately) {
+				if (message->wait_utterance_id != -1) {
+					need_play_message_pool.push_back(message);
 				} else {
-					need_play_message_queue.push_back(message);
+					play_message(message);
 				}
+			} else {
+				need_play_message_queue.push_back(message);
 			}
-			need_process_message_queue.pop_front();
 		}
-		// callable_mp(this, &TTSSpeaker::uninfer).call_deferred();
-
-		infer_is_running = false;
-		infer_semaphore.wait();
-		if (infer_need_stop) {
-			break;
-		}
+		need_process_message_queue.pop_front();
 	}
+
+	infer_is_running = false;
+	callable_mp(this, &TTSSpeaker::uninfer).call_deferred();
 	return true;
 }
 
 bool TTSSpeaker::process_message_queue() {
-	while (true) {
-		queue_is_running = true;
+	queue_is_running = true;
+	while (is_playing()) {
+		{
+			AudioStreamPlayer *cur_player;
+			if (custom_audio_stream_player != nullptr) {
+				cur_player = custom_audio_stream_player;
+			} else if (audio_stream_player != nullptr) {
+				cur_player = audio_stream_player;
+			} else {
+				return false;
+			}
+			Ref<AudioStreamPlaybackPolyphonic> cur_audio_stream_playback_polyphonic = cur_player->get_stream_playback();
+			// 处理所有的音频播放状态
+			bool have_audio_playing = false;
 
-		while (is_playing()) {
-			{
-				AudioStreamPlayer *cur_player;
-				if (custom_audio_stream_player != nullptr) {
-					cur_player = custom_audio_stream_player;
-				} else if (audio_stream_player != nullptr) {
-					cur_player = audio_stream_player;
-				} else {
-					return false;
-				}
-				Ref<AudioStreamPlaybackPolyphonic> cur_audio_stream_playback_polyphonic = cur_player->get_stream_playback();
-				// 处理所有的音频播放状态
-				bool have_audio_playing = false;
-
-				for (int i = playing_message.size() - 1; i >= 0; i--) {
-					if (cur_audio_stream_playback_polyphonic->is_stream_playing(playing_message[i]->polyphonic_stream_id)) {
-						if (playing_message[i]->immediately) {
-							// 如果是立即播放则不会管
-						} else {
-							// 如果不是立即播放则说明当前还存在播放内容，那么音频应该还在等待序列中
-							have_audio_playing = true;
-						}
-
+			for (int i = playing_message.size() - 1; i >= 0; i--) {
+				if (cur_audio_stream_playback_polyphonic->is_stream_playing(playing_message[i]->polyphonic_stream_id)) {
+					if (playing_message[i]->immediately) {
+						// 如果是立即播放则不会管
 					} else {
-						// 如果已经播放完毕则触发信号并记录时间
-						playing_message[i]->finish_time = Time::get_singleton()->get_ticks_msec();
-						TextToSpeech::get_singleton()->call_deferred("emit_signal", "finish_audio", playing_message[i]->id, playing_message[i]->finish_time);
-						// 注意因为wait_time 是全局性质的，所以应该在TextToSpeech触发是否开启等待的audio
-						List<TTSUtterance *> target_need_update_messages = playing_message[i]->need_update_messages;
-						for (int32_t i = target_need_update_messages.size() - 1; i >= 0; i--) {
-							if (target_need_update_messages[i]->wait_event == TTS_UTTERANCE_ENDED) {
-								target_need_update_messages[i]->target_start_time = playing_message[i]->finish_time + (target_need_update_messages[i]->wait_time) * 1000;
-							}
-							target_need_update_messages.erase(target_need_update_messages[i]);
-						}
-						// 将这个message 从播放列表中移除
-						playing_message.erase(playing_message[i]);
+						// 如果不是立即播放则说明当前还存在播放内容，那么音频应该还在等待序列中
+						have_audio_playing = true;
 					}
-				}
-				if (have_audio_playing) {
-				} else {
-					if (need_play_message_queue.size() > 0) {
-						TTSUtterance *message = need_play_message_queue.front()->get();
-						if (message->target_start_time == -1) {
-							if (message->wait_utterance_id == -1) {
-								if (message->wait_time <= 0) {
-									// 立刻播放即可
-									play_message(message);
-									need_play_message_queue.pop_front();
-								} else {
-									// 等待时间
-									message->target_start_time = Time::get_singleton()->get_ticks_msec() + (message->wait_time) * 1000;
-								}
-							} else {
-								if (TextToSpeech::get_singleton()->message_map.has(message->wait_utterance_id)) {
-									if (message->wait_event == TTS_UTTERANCE_STARTED) {
-										// 如果是开始播放
-										TTSUtterance *wait_message = TextToSpeech::get_singleton()->message_map[message->wait_utterance_id];
-										if (wait_message->start_time != -1) {
-											// 如果已经开始播放了
-											if (message->wait_time <= 0) {
-												// 立刻播放即可
-												play_message(message);
-												need_play_message_queue.pop_front();
-											} else {
-												// 等待时间
-												message->target_start_time = TextToSpeech::get_singleton()->message_map[message->wait_utterance_id]->start_time + (message->wait_time) * 1000;
-												if (message->target_start_time <= Time::get_singleton()->get_ticks_msec()) {
-													play_message(message);
-													need_play_message_queue.pop_front();
-												}
-											}
-										} else {
-											// 如果没有开始播放那么就等待
-											wait_message->need_update_messages.push_back(message);
-											// 这里将时间设置为接近无穷大的数值，防止被自动启动
-											message->target_start_time = 9223372036854775807;
-										}
-									} else if (message->wait_event == TTS_UTTERANCE_ENDED) {
-										// 如果是开始播放
-										TTSUtterance *wait_message = TextToSpeech::get_singleton()->message_map[message->wait_utterance_id];
-										if (wait_message->finish_time != -1) {
-											// 如果已经结束播放了
-											if (message->wait_time <= 0) {
-												// 立刻播放即可
-												play_message(message);
-												need_play_message_queue.pop_front();
-											} else {
-												// 等待时间
-												message->target_start_time = TextToSpeech::get_singleton()->message_map[message->wait_utterance_id]->finish_time + (message->wait_time) * 1000;
-												if (message->target_start_time <= Time::get_singleton()->get_ticks_msec()) {
-													play_message(message);
-													need_play_message_queue.pop_front();
-												}
-											}
-										} else {
-											// 如果没有开始播放那么就等待
-											wait_message->need_update_messages.push_back(message);
-											// 这里将时间设置为接近无穷大的数值，防止被自动启动
-											message->target_start_time = 9223372036854775807;
-										}
-									}
-								} else {
-									// 如果没有id那么就当作wait_utterance_id=-1进行处理
-									if (message->wait_time <= 0) {
-										// 立刻播放即可
-										play_message(message);
-										need_play_message_queue.pop_front();
-									} else {
-										// 等待时间
-										message->target_start_time = Time::get_singleton()->get_ticks_msec() + (message->wait_time) * 1000;
-									}
-								}
-							}
-						} else {
-							if (Time::get_singleton()->get_ticks_msec() > message->target_start_time) {
-								play_message(message);
-								need_play_message_queue.pop_front();
-							}
-						}
-					}
-				}
 
-				for (int32_t i = need_play_message_pool.size() - 1; i >= 0; i--) {
-					TTSUtterance *message = need_play_message_pool[i];
+				} else {
+					// 如果已经播放完毕则触发信号并记录时间
+					playing_message[i]->finish_time = Time::get_singleton()->get_ticks_msec();
+					TextToSpeech::get_singleton()->call_deferred("emit_signal", "finish_audio", playing_message[i]->id, playing_message[i]->finish_time);
+					// 注意因为wait_time 是全局性质的，所以应该在TextToSpeech触发是否开启等待的audio
+					List<TTSUtterance *> target_need_update_messages = playing_message[i]->need_update_messages;
+					for (int32_t i = target_need_update_messages.size() - 1; i >= 0; i--) {
+						if (target_need_update_messages[i]->wait_event == TTS_UTTERANCE_ENDED) {
+							target_need_update_messages[i]->target_start_time = playing_message[i]->finish_time + (target_need_update_messages[i]->wait_time) * 1000;
+						}
+						target_need_update_messages.erase(target_need_update_messages[i]);
+					}
+					// 将这个message 从播放列表中移除
+					playing_message.erase(playing_message[i]);
+				}
+			}
+			if (have_audio_playing) {
+			} else {
+				if (need_play_message_queue.size() > 0) {
+					TTSUtterance *message = need_play_message_queue.front()->get();
 					if (message->target_start_time == -1) {
 						if (message->wait_utterance_id == -1) {
 							if (message->wait_time <= 0) {
 								// 立刻播放即可
 								play_message(message);
-								need_play_message_pool.erase(message);
+								need_play_message_queue.pop_front();
 							} else {
 								// 等待时间
 								message->target_start_time = Time::get_singleton()->get_ticks_msec() + (message->wait_time) * 1000;
@@ -704,13 +619,13 @@ bool TTSSpeaker::process_message_queue() {
 										if (message->wait_time <= 0) {
 											// 立刻播放即可
 											play_message(message);
-											need_play_message_pool.erase(message);
+											need_play_message_queue.pop_front();
 										} else {
 											// 等待时间
 											message->target_start_time = TextToSpeech::get_singleton()->message_map[message->wait_utterance_id]->start_time + (message->wait_time) * 1000;
 											if (message->target_start_time <= Time::get_singleton()->get_ticks_msec()) {
 												play_message(message);
-												need_play_message_pool.erase(message);
+												need_play_message_queue.pop_front();
 											}
 										}
 									} else {
@@ -727,13 +642,13 @@ bool TTSSpeaker::process_message_queue() {
 										if (message->wait_time <= 0) {
 											// 立刻播放即可
 											play_message(message);
-											need_play_message_pool.erase(message);
+											need_play_message_queue.pop_front();
 										} else {
 											// 等待时间
 											message->target_start_time = TextToSpeech::get_singleton()->message_map[message->wait_utterance_id]->finish_time + (message->wait_time) * 1000;
 											if (message->target_start_time <= Time::get_singleton()->get_ticks_msec()) {
 												play_message(message);
-												need_play_message_pool.erase(message);
+												need_play_message_queue.pop_front();
 											}
 										}
 									} else {
@@ -748,7 +663,7 @@ bool TTSSpeaker::process_message_queue() {
 								if (message->wait_time <= 0) {
 									// 立刻播放即可
 									play_message(message);
-									need_play_message_pool.erase(message);
+									need_play_message_queue.pop_front();
 								} else {
 									// 等待时间
 									message->target_start_time = Time::get_singleton()->get_ticks_msec() + (message->wait_time) * 1000;
@@ -758,20 +673,98 @@ bool TTSSpeaker::process_message_queue() {
 					} else {
 						if (Time::get_singleton()->get_ticks_msec() > message->target_start_time) {
 							play_message(message);
-							need_play_message_pool.erase(message);
+							need_play_message_queue.pop_front();
 						}
 					}
 				}
-				OS::get_singleton()->delay_msec(10);
 			}
-		}
 
-		queue_is_running = false;
-		queue_semaphore.wait();
-		if (queue_need_stop) {
-			break;
+			for (int32_t i = need_play_message_pool.size() - 1; i >= 0; i--) {
+				TTSUtterance *message = need_play_message_pool[i];
+				if (message->target_start_time == -1) {
+					if (message->wait_utterance_id == -1) {
+						if (message->wait_time <= 0) {
+							// 立刻播放即可
+							play_message(message);
+							need_play_message_pool.erase(message);
+						} else {
+							// 等待时间
+							message->target_start_time = Time::get_singleton()->get_ticks_msec() + (message->wait_time) * 1000;
+						}
+					} else {
+						if (TextToSpeech::get_singleton()->message_map.has(message->wait_utterance_id)) {
+							if (message->wait_event == TTS_UTTERANCE_STARTED) {
+								// 如果是开始播放
+								TTSUtterance *wait_message = TextToSpeech::get_singleton()->message_map[message->wait_utterance_id];
+								if (wait_message->start_time != -1) {
+									// 如果已经开始播放了
+									if (message->wait_time <= 0) {
+										// 立刻播放即可
+										play_message(message);
+										need_play_message_pool.erase(message);
+									} else {
+										// 等待时间
+										message->target_start_time = TextToSpeech::get_singleton()->message_map[message->wait_utterance_id]->start_time + (message->wait_time) * 1000;
+										if (message->target_start_time <= Time::get_singleton()->get_ticks_msec()) {
+											play_message(message);
+											need_play_message_pool.erase(message);
+										}
+									}
+								} else {
+									// 如果没有开始播放那么就等待
+									wait_message->need_update_messages.push_back(message);
+									// 这里将时间设置为接近无穷大的数值，防止被自动启动
+									message->target_start_time = 9223372036854775807;
+								}
+							} else if (message->wait_event == TTS_UTTERANCE_ENDED) {
+								// 如果是开始播放
+								TTSUtterance *wait_message = TextToSpeech::get_singleton()->message_map[message->wait_utterance_id];
+								if (wait_message->finish_time != -1) {
+									// 如果已经结束播放了
+									if (message->wait_time <= 0) {
+										// 立刻播放即可
+										play_message(message);
+										need_play_message_pool.erase(message);
+									} else {
+										// 等待时间
+										message->target_start_time = TextToSpeech::get_singleton()->message_map[message->wait_utterance_id]->finish_time + (message->wait_time) * 1000;
+										if (message->target_start_time <= Time::get_singleton()->get_ticks_msec()) {
+											play_message(message);
+											need_play_message_pool.erase(message);
+										}
+									}
+								} else {
+									// 如果没有开始播放那么就等待
+									wait_message->need_update_messages.push_back(message);
+									// 这里将时间设置为接近无穷大的数值，防止被自动启动
+									message->target_start_time = 9223372036854775807;
+								}
+							}
+						} else {
+							// 如果没有id那么就当作wait_utterance_id=-1进行处理
+							if (message->wait_time <= 0) {
+								// 立刻播放即可
+								play_message(message);
+								need_play_message_pool.erase(message);
+							} else {
+								// 等待时间
+								message->target_start_time = Time::get_singleton()->get_ticks_msec() + (message->wait_time) * 1000;
+							}
+						}
+					}
+				} else {
+					if (Time::get_singleton()->get_ticks_msec() > message->target_start_time) {
+						play_message(message);
+						need_play_message_pool.erase(message);
+					}
+				}
+			}
+			OS::get_singleton()->delay_msec(10);
 		}
 	}
+
+	queue_is_running = false;
+	callable_mp(this, &TTSSpeaker::stop).call_deferred();
 	return true;
 }
 

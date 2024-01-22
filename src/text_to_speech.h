@@ -149,13 +149,13 @@ public:
 	int status;
 
 	Mutex infer_mutex;
-	Thread infer_thread;
+	Thread *infer_thread = nullptr;
 	Semaphore infer_semaphore;
 	std::atomic<bool> infer_need_stop = false;
 	std::atomic<bool> infer_is_running = false;
 
 	Mutex queue_mutex;
-	Thread queue_thread;
+	Thread *queue_thread = nullptr;
 	Semaphore queue_semaphore;
 	std::atomic<bool> queue_need_stop = false;
 	std::atomic<bool> queue_is_running = false;
