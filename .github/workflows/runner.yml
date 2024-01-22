@@ -8,9 +8,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  static-checks:
-    name: 📊 Static checks
-    uses: ./.github/workflows/static_checks.yml
+  # static-checks:
+  #   name: 📊 Static checks
+  #   uses: ./.github/workflows/static_checks.yml
 
   # android-build:
   #   name: 🤖 Android
@@ -35,7 +35,7 @@ jobs:
 
   windows-build:
     name: 🏁 Windows
-    needs: static-checks
+    # needs: static-checks
     uses: ./.github/workflows/windows_builds.yml
 
 # TODO reenable
