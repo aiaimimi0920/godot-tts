@@ -385,10 +385,10 @@ void TTSSpeaker::play_message(TTSUtterance *message) {
 
 	List<TTSUtterance *> target_need_update_messages = message->need_update_messages;
 	for (int32_t i = target_need_update_messages.size() - 1; i >= 0; i--) {
-		if (target_need_update_messages[i]->wait_event == TTS_UTTERANCE_STARTED) {
-			target_need_update_messages[i]->target_start_time = playing_message[i]->start_time + (target_need_update_messages[i]->wait_time) * 1000;
+		if (target_need_update_messages.get(i)->wait_event == TTS_UTTERANCE_STARTED) {
+			target_need_update_messages.get(i)->target_start_time = playing_message.get(i)->start_time + (target_need_update_messages.get(i)->wait_time) * 1000;
 		}
-		target_need_update_messages.erase(target_need_update_messages[i]);
+		target_need_update_messages.erase(target_need_update_messages.get(i));
 	}
 }
 
@@ -489,8 +489,8 @@ bool TTSSpeaker::process_message_infer() {
 		for (int32_t i = 0; i < retLen; i++) {
 			int16_t target_one_buffer = (int16_t)(resampled_float[i] * (message->volume / 100.0));
 			AudioFrame cur_audio_frame;
-			cur_audio_frame.l = target_one_buffer / 32768.f;
-			cur_audio_frame.r = target_one_buffer / 32768.f;
+			cur_audio_frame.left = target_one_buffer / 32768.f;
+			cur_audio_frame.right = target_one_buffer / 32768.f;
 			target_audio.push_back(cur_audio_frame);
 		}
 		float sample_rate = AudioServer::get_singleton()->get_mix_rate();
@@ -514,10 +514,10 @@ bool TTSSpeaker::process_message_infer() {
 		uint8_t *w = p_data.ptrw();
 
 		for (int32_t i = 0; i < retLen; i++) {
-			int16_t l_v = CLAMP(p_dst_frames[i].l * 32768, -32768, 32767);
+			int16_t l_v = CLAMP(p_dst_frames[i].left * 32768, -32768, 32767);
 			encode_uint16(l_v, &w[(i * 2) * 2]);
 
-			int16_t r_v = CLAMP(p_dst_frames[i].r * 32768, -32768, 32767);
+			int16_t r_v = CLAMP(p_dst_frames[i].right * 32768, -32768, 32767);
 			encode_uint16(r_v, &w[(i * 2 + 1) * 2]);
 		}
 		// 保存文件
@@ -571,8 +571,8 @@ bool TTSSpeaker::process_message_queue() {
 			bool have_audio_playing = false;
 
 			for (int i = playing_message.size() - 1; i >= 0; i--) {
-				if (cur_audio_stream_playback_polyphonic->is_stream_playing(playing_message[i]->polyphonic_stream_id)) {
-					if (playing_message[i]->immediately) {
+				if (cur_audio_stream_playback_polyphonic->is_stream_playing(playing_message.get(i)->polyphonic_stream_id)) {
+					if (playing_message.get(i)->immediately) {
 						// 如果是立即播放则不会管
 					} else {
 						// 如果不是立即播放则说明当前还存在播放内容，那么音频应该还在等待序列中
@@ -581,18 +581,18 @@ bool TTSSpeaker::process_message_queue() {
 
 				} else {
 					// 如果已经播放完毕则触发信号并记录时间
-					playing_message[i]->finish_time = Time::get_singleton()->get_ticks_msec();
-					TextToSpeech::get_singleton()->call_deferred("emit_signal", "finish_audio", playing_message[i]->id, playing_message[i]->finish_time);
+					playing_message.get(i)->finish_time = Time::get_singleton()->get_ticks_msec();
+					TextToSpeech::get_singleton()->call_deferred("emit_signal", "finish_audio", playing_message.get(i)->id, playing_message.get(i)->finish_time);
 					// 注意因为wait_time 是全局性质的，所以应该在TextToSpeech触发是否开启等待的audio
-					List<TTSUtterance *> target_need_update_messages = playing_message[i]->need_update_messages;
+					List<TTSUtterance *> target_need_update_messages = playing_message.get(i)->need_update_messages;
 					for (int32_t i = target_need_update_messages.size() - 1; i >= 0; i--) {
-						if (target_need_update_messages[i]->wait_event == TTS_UTTERANCE_ENDED) {
-							target_need_update_messages[i]->target_start_time = playing_message[i]->finish_time + (target_need_update_messages[i]->wait_time) * 1000;
+						if (target_need_update_messages.get(i)->wait_event == TTS_UTTERANCE_ENDED) {
+							target_need_update_messages.get(i)->target_start_time = playing_message.get(i)->finish_time + (target_need_update_messages.get(i)->wait_time) * 1000;
 						}
-						target_need_update_messages.erase(target_need_update_messages[i]);
+						target_need_update_messages.erase(target_need_update_messages.get(i));
 					}
 					// 将这个message 从播放列表中移除
-					playing_message.erase(playing_message[i]);
+					playing_message.erase(playing_message.get(i));
 				}
 			}
 			if (have_audio_playing) {
@@ -680,7 +680,7 @@ bool TTSSpeaker::process_message_queue() {
 			}
 
 			for (int32_t i = need_play_message_pool.size() - 1; i >= 0; i--) {
-				TTSUtterance *message = need_play_message_pool[i];
+				TTSUtterance *message = need_play_message_pool.get(i);
 				if (message->target_start_time == -1) {
 					if (message->wait_utterance_id == -1) {
 						if (message->wait_time <= 0) {
@@ -774,7 +774,7 @@ void TTSSpeaker::interrupt() {
 	need_play_message_pool.clear();
 	// 循环遍历playing_message
 	for (uint32_t i = need_play_message_pool.size() - 1; i >= 0; i--) {
-		TTSUtterance *cur_playing_message = need_play_message_pool[i];
+		TTSUtterance *cur_playing_message = need_play_message_pool.get(i);
 		stop_message(cur_playing_message);
 	}
 	playing_message.clear();
